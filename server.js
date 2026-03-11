@@ -128,12 +128,7 @@ app.post('/api/create-order', async (req, res) => {
       line_items: lineItems,
     };
 
-    // Only set redirect_url for non-localhost (Revolut rejects localhost)
-    // Revolut requires https:// scheme
-    if (!BASE_URL.includes('localhost') && !BASE_URL.includes('127.0.0.1')) {
-      var redirectBase = BASE_URL.replace(/^http:\/\//i, 'https://');
-      orderPayload.redirect_url = `${redirectBase}/success?ref=${orderRef}`;
-    }
+    // No redirect_url needed — embedded checkout uses SDK onSuccess callback
 
     // Add shipping address if provided
     if (customer?.address && customer?.countryCode) {
