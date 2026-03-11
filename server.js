@@ -2,7 +2,8 @@
  * EZKOAL TRADE SL — Server with Revolut Payment Integration
  * 
  * Endpoints:
- *   POST /api/create-order    — Creates a Revolut order, returns checkout_url
+ *   GET  /api/config          — Returns public config for frontend (public key, mode)
+ *   POST /api/create-order    — Creates a Revolut order, returns token for embedded checkout
  *   POST /api/webhook         — Receives Revolut webhook notifications
  *   GET  /api/order/:id       — Check order status (polling fallback)
  *   GET  /success             — Thank you page
@@ -48,6 +49,14 @@ app.use('/api/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ── GET /api/config — Public configuration for frontend ──
+app.get('/api/config', (req, res) => {
+  res.json({
+    publicKey: REVOLUT_PUBLIC_KEY,
+    mode: REVOLUT_API_URL.includes('sandbox') ? 'sandbox' : 'prod',
+  });
+});
+
 // ── Helper: call Revolut API ──
 async function revolutAPI(method, endpoint, body = null) {
   const url = `${REVOLUT_API_URL}${endpoint}`;
@@ -78,11 +87,11 @@ async function revolutAPI(method, endpoint, body = null) {
 }
 
 // ── POST /api/create-order ──
-// Frontend sends cart items; server creates Revolut order and returns checkout_url
+// Frontend sends cart items; server creates Revolut order and returns token for embedded checkout
 app.post('/api/create-order', async (req, res) => {
   try {
     const { items, customer, locale } = req.body;
-    
+
     if (!items || !items.length) {
       return res.status(400).json({ error: 'No items in cart' });
     }
@@ -94,6 +103,7 @@ app.post('/api/create-order', async (req, res) => {
       subtotal += lineTotal;
       return {
         name: item.name,
+        type: 'physical',
         quantity: { value: item.quantity },
         unit_price_amount: Math.round(item.price * 100),
         total_amount: lineTotal,
@@ -107,16 +117,34 @@ app.post('/api/create-order', async (req, res) => {
     // Generate a reference
     const orderRef = `EZKOAL-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
-    // Create Revolut order
-    const revolutOrder = await revolutAPI('POST', '/orders', {
+    // Build order payload
+    const orderPayload = {
+      type: 'payment',
       amount: totalAmount,
       currency: 'EUR',
       description: `EZKOAL Order ${orderRef}`,
       merchant_order_ext_ref: orderRef,
       customer_email: customer?.email || undefined,
       line_items: lineItems,
-      redirect_url: `${BASE_URL}/success?ref=${orderRef}`,
-    });
+    };
+
+    // Only set redirect_url for non-localhost (Revolut rejects localhost)
+    if (!BASE_URL.includes('localhost') && !BASE_URL.includes('127.0.0.1')) {
+      orderPayload.redirect_url = `${BASE_URL}/success?ref=${orderRef}`;
+    }
+
+    // Add shipping address if provided
+    if (customer?.address && customer?.countryCode) {
+      orderPayload.shipping_address = {
+        street_line_1: customer.address,
+        city: customer.city || '',
+        postcode: customer.postcode || '',
+        country_code: customer.countryCode,
+      };
+    }
+
+    // Create Revolut order
+    const revolutOrder = await revolutAPI('POST', '/orders', orderPayload);
 
     // Store order locally
     orders.set(orderRef, {
@@ -133,10 +161,11 @@ app.post('/api/create-order', async (req, res) => {
 
     console.log(`[Order] Created ${orderRef} -> Revolut ${revolutOrder.id}`);
 
-    // Return checkout URL to frontend
+    // Return token for embedded checkout + fallback checkout URL
     res.json({
       success: true,
       orderRef,
+      token: revolutOrder.public_id || revolutOrder.token,
       checkoutUrl: revolutOrder.checkout_url,
       orderId: revolutOrder.id,
     });
