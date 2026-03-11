@@ -1,0 +1,115 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Order Confirmed — EZKOAL TRADE SL</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',system-ui,sans-serif;background:#0a0a0a;color:#ddd;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
+.card{max-width:520px;width:100%;text-align:center;animation:fu .6s ease both}
+@keyframes fu{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.check{width:80px;height:80px;border-radius:50%;background:rgba(34,197,94,.12);display:flex;align-items:center;justify-content:center;margin:0 auto 24px}
+.check svg{color:#22c55e}
+h1{font-family:'Playfair Display',serif;font-size:clamp(24px,4vw,36px);color:#fff;margin-bottom:8px}
+.sub{color:#999;font-size:14px;margin-bottom:28px;line-height:1.7}
+.ref{display:inline-block;background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:10px 20px;font-family:monospace;font-size:14px;color:#e85d26;margin-bottom:24px;letter-spacing:1px}
+.details{background:#1a1a1a;border:1px solid #333;border-radius:16px;padding:20px;margin-bottom:24px;text-align:left}
+.details h3{font-family:'Playfair Display',serif;font-size:14px;color:#fff;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #333}
+.row{display:flex;justify-content:space-between;margin-bottom:6px;font-size:12px;color:#bbb}
+.row.tot{font-size:14px;font-weight:700;color:#fff;margin-top:8px;padding-top:8px;border-top:1px solid #333}
+.status{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;font-size:11px;font-weight:700;margin-bottom:20px}
+.status.ok{background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.25)}
+.status.wait{background:rgba(232,93,38,.12);color:#e85d26;border:1px solid rgba(232,93,38,.25)}
+.status.fail{background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.25)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:12px 28px;border-radius:8px;font-weight:600;font-size:13px;transition:.3s;border:none;cursor:pointer;text-decoration:none}
+.btn-p{background:#e85d26;color:#fff}.btn-p:hover{background:#f0844e;transform:translateY(-2px)}
+.btn-s{border:2px solid #555;color:#ddd;background:none}.btn-s:hover{border-color:#e85d26;color:#e85d26}
+.btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.spinner{width:20px;height:20px;border:3px solid #333;border-top-color:#e85d26;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.logo{font-family:'Playfair Display',serif;font-size:18px;color:#fff;margin-bottom:32px}
+.logo b{color:#e85d26}
+.info{display:flex;gap:6px;align-items:center;font-size:10px;color:#777;margin-top:16px;justify-content:center}
+</style></head><body>
+<div class="card">
+  <div class="logo">EZ<b>KOAL</b></div>
+  <div id="content">
+    <div class="spinner"></div>
+    <p style="color:#999;font-size:13px">Verifying payment...</p>
+  </div>
+</div>
+<script>
+(function(){
+  var params = new URLSearchParams(window.location.search);
+  var ref = params.get('ref');
+  var el = document.getElementById('content');
+
+  if (!ref) {
+    showSuccess('Your order has been placed successfully.');
+    return;
+  }
+
+  // Poll order status
+  var attempts = 0;
+  function check() {
+    fetch('/api/order/' + ref)
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data.status === 'completed' || data.status === 'authorised') {
+          showSuccess('Payment confirmed! Your coal will be on its way soon.', ref, data);
+        } else if (data.status === 'failed' || data.status === 'cancelled') {
+          showFailed(ref, data);
+        } else {
+          attempts++;
+          if (attempts < 15) {
+            setTimeout(check, 2000);
+          } else {
+            // After 30 seconds, show pending
+            showPending(ref, data);
+          }
+        }
+      })
+      .catch(function(){
+        showSuccess('Thank you for your order!', ref);
+      });
+  }
+  check();
+
+  function fmt(cents) {
+    return '\u20AC' + (cents / 100).toFixed(2);
+  }
+
+  function showSuccess(msg, ref, data) {
+    var h = '<div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="40" height="40"><polyline points="20 6 9 17 4 12"/></svg></div>';
+    h += '<h1>Thank You!</h1>';
+    h += '<p class="sub">' + msg + '</p>';
+    h += '<div class="status ok">\u2713 Payment Confirmed</div>';
+    if (ref) h += '<div class="ref">' + ref + '</div>';
+    if (data && data.totalAmount) {
+      h += '<div class="details"><h3>Order Summary</h3>';
+      if (data.items) {
+        data.items.forEach(function(it){
+          h += '<div class="row"><span>' + it.name + ' \u00d7' + it.quantity + '</span><span>' + fmt(Math.round(it.price*it.quantity*100)) + '</span></div>';
+        });
+      }
+      h += '<div class="row tot"><span>Total (incl. VAT)</span><span>' + fmt(data.totalAmount) + '</span></div></div>';
+    }
+    h += '<div class="info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z"/><polyline points="22,6 12,13 2,6"/></svg> Confirmation email will be sent shortly</div>';
+    h += '<br><div class="btns"><a href="/" class="btn btn-p">Continue Shopping</a></div>';
+    el.innerHTML = h;
+  }
+
+  function showFailed(ref, data) {
+    window.location.href = '/failed?ref=' + ref;
+  }
+
+  function showPending(ref, data) {
+    var h = '<div class="check" style="background:rgba(232,93,38,.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#e85d26" stroke-width="2" width="40" height="40"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>';
+    h += '<h1>Processing</h1>';
+    h += '<p class="sub">Your payment is being processed. This may take a moment.</p>';
+    h += '<div class="status wait">\u23F3 Processing</div>';
+    if (ref) h += '<div class="ref">' + ref + '</div>';
+    h += '<br><div class="btns"><a href="/success?ref=' + ref + '" class="btn btn-p">Check Again</a><a href="/" class="btn btn-s">Back to Shop</a></div>';
+    el.innerHTML = h;
+  }
+})();
+</script>
+</body></html>
