@@ -171,10 +171,14 @@ app.post('/api/create-order', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('[Order] Creation failed:', err);
+    console.error('[Order] Creation failed:', err.message || err);
+    if (err.response) {
+      try { const body = await err.response.text(); console.error('[Order] Revolut response:', body); } catch(e) {}
+    }
+    const details = err.data ? JSON.stringify(err.data) : err.message;
     res.status(err.status || 500).json({
       error: 'Failed to create order',
-      details: err.data || err.message,
+      details: details,
     });
   }
 });
