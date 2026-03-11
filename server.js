@@ -129,8 +129,10 @@ app.post('/api/create-order', async (req, res) => {
     };
 
     // Only set redirect_url for non-localhost (Revolut rejects localhost)
+    // Revolut requires https:// scheme
     if (!BASE_URL.includes('localhost') && !BASE_URL.includes('127.0.0.1')) {
-      orderPayload.redirect_url = `${BASE_URL}/success?ref=${orderRef}`;
+      var redirectBase = BASE_URL.replace(/^http:\/\//i, 'https://');
+      orderPayload.redirect_url = `${redirectBase}/success?ref=${orderRef}`;
     }
 
     // Add shipping address if provided
